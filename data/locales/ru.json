@@ -81,5 +81,13 @@
     "image_prompt_placeholder": "Сгенерируйте или введите промпт для изображения вручную...",
     "error_generating_image_prompt": "Не удалось сгенерировать промпт для изображения.",
     "error_generating_avatar": "Не удалось сгенерировать аватар.",
-    "download_avatar_aria_label": "Скачать аватар"
+    "download_avatar_aria_label": "Скачать аватар",
+    "model_select_placeholder": "Выберите модель...",
+    "model_select_disabled": "Сначала введите API ключ и Endpoint",
+    "model_select_loading": "Загрузка моделей...",
+    "model_select_no_models": "Модели не найдены",
+    "model_select_error": "Не удалось загрузить модели",
+    "model_select_all_models": "Все модели (без фильтра)",
+    "model_select_refresh": "Обновить список моделей",
+    "model_select_manual_fallback": "Введите ID модели вручную"
 }

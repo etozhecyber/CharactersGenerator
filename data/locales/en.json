@@ -81,5 +81,13 @@
     "image_prompt_placeholder": "Generate or manually enter an image prompt...",
     "error_generating_image_prompt": "Could not generate the image prompt.",
     "error_generating_avatar": "Could not generate the avatar image.",
-    "download_avatar_aria_label": "Download Avatar"
+    "download_avatar_aria_label": "Download Avatar",
+    "model_select_placeholder": "Select a model...",
+    "model_select_disabled": "Enter API Key and Endpoint first",
+    "model_select_loading": "Loading models...",
+    "model_select_no_models": "No models found",
+    "model_select_error": "Could not load models",
+    "model_select_all_models": "All models (unfiltered)",
+    "model_select_refresh": "Refresh model list",
+    "model_select_manual_fallback": "Enter model ID manually"
 }

@@ -2,6 +2,8 @@
 import React, { useRef } from 'react';
 import type { Language, GenerationModel } from '../types';
 import { useLocalization } from '../hooks/useLocalization';
+import { useModelList } from '../hooks/useModelList';
+import { ModelSelector } from './ModelSelector';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -25,6 +27,12 @@ const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const RefreshIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.182" />
+    </svg>
+);
+
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
     isOpen, onClose, 
@@ -37,6 +45,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const { language, setLanguage, t } = useLocalization();
     const modalRef = useRef<HTMLDivElement>(null);
 
+    // Single fetch for both model selectors
+    const { models, isLoading, error, isFiltered, refetch } = useModelList(apiKey, apiEndpoint);
+
     if (!isOpen) return null;
 
     const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -47,13 +58,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onCardGenerationLanguageChange(e.target.value as Language);
     };
 
-    const handleModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onGenerationModelChange(e.target.value as GenerationModel);
-    };
-
-    const handleConceptModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onConceptGenerationModelChange(e.target.value as GenerationModel);
-    };
+    const modelsDisabled = !apiKey || !apiEndpoint;
 
     return (
         <div 
@@ -122,25 +127,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                     </div>
 
-                    <div>
-                        <label htmlFor="model-input" className="block text-sm font-medium text-gray-300 mb-1">{t('generation_model_label')}</label>
-                        <input
-                            id="model-input"
-                            type="text"
-                            value={generationModel}
-                            onChange={handleModelChange}
-                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
-                    </div>
+                    {/* Model selectors with shared model list */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-400">{t('model_select_section_title', 'Models')}</span>
+                            <button
+                                onClick={refetch}
+                                disabled={modelsDisabled || isLoading}
+                                className="p-1 text-gray-400 hover:text-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={t('model_select_refresh')}
+                            >
+                                <RefreshIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            </button>
+                        </div>
 
-                    <div>
-                        <label htmlFor="concept-model-input" className="block text-sm font-medium text-gray-300 mb-1">{t('concept_generation_model_label')}</label>
-                        <input
-                            id="concept-model-input"
-                            type="text"
+                        <ModelSelector
+                            id="model-select"
+                            label={t('generation_model_label')}
+                            value={generationModel}
+                            onChange={onGenerationModelChange}
+                            models={models}
+                            isLoading={isLoading}
+                            error={error}
+                            isFiltered={isFiltered}
+                            disabled={modelsDisabled}
+                        />
+
+                        <ModelSelector
+                            id="concept-model-select"
+                            label={t('concept_generation_model_label')}
                             value={conceptGenerationModel}
-                            onChange={handleConceptModelChange}
-                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
+                            onChange={onConceptGenerationModelChange}
+                            models={models}
+                            isLoading={isLoading}
+                            error={error}
+                            isFiltered={isFiltered}
+                            disabled={modelsDisabled}
                         />
                     </div>
                 </div>
