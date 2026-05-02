@@ -18,7 +18,7 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
     useEffect(() => {
         const loadMessages = async () => {
             try {
-                const response = await fetch(`/data/locales/${language}.json`);
+                const response = await fetch(`${import.meta.env.BASE_URL}data/locales/${language}.json`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 setMessages(data);
@@ -26,7 +26,7 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 console.error(`Could not load locale file for ${language}`, error);
                 // Fallback to English
                 try {
-                    const fallbackResponse = await fetch(`/data/locales/en.json`);
+                    const fallbackResponse = await fetch(`${import.meta.env.BASE_URL}data/locales/en.json`);
                     if (!fallbackResponse.ok) throw new Error(`HTTP error! status: ${fallbackResponse.status}`);
                     const fallbackData = await fallbackResponse.json();
                     setMessages(fallbackData);

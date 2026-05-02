@@ -58,7 +58,7 @@ export const initializeTagMap = async (): Promise<Map<string, string>> => {
     await Promise.all(
         ALL_CATEGORIES.map(async (categoryId) => {
             try {
-                const response = await fetch(`/data/tags/${categoryId.replace('-', '_')}.json`);
+                const response = await fetch(`${import.meta.env.BASE_URL}data/tags/${categoryId.replace('-', '_')}.json`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }

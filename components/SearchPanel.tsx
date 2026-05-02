@@ -41,7 +41,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ selectedTags, onSelect
             try {
                 const categories = await Promise.all(
                     CATEGORY_DEFINITIONS.map(async (categoryDef) => {
-                        const response = await fetch(`/data/tags/${categoryDef.id.replace('-', '_')}.json`);
+                        const response = await fetch(`${import.meta.env.BASE_URL}data/tags/${categoryDef.id.replace('-', '_')}.json`);
                         if (!response.ok) {
                             console.error(`Failed to fetch tags for ${categoryDef.id}`);
                             return { id: categoryDef.id, tags: [], description: categoryDef.description };

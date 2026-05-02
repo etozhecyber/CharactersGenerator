@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const distDir = path.join(repoRoot, 'dist');
+const dataDir = path.join(repoRoot, 'data');
 
 function run(command, args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -59,7 +60,7 @@ async function ensureGhPagesWorktree(worktreeDir) {
         await run('git', ['fetch', 'origin', 'gh-pages']);
         await run('git', ['worktree', 'add', '--track', '-B', 'gh-pages', worktreeDir, 'origin/gh-pages']);
     } catch {
-        await run('git', ['worktree', 'add', '--orphan', worktreeDir]);
+        await run('git', ['worktree', 'add', '--orphan', '-b', 'gh-pages', worktreeDir]);
     }
 
     await run('git', ['-C', worktreeDir, 'config', 'core.autocrlf', 'false']);
@@ -101,6 +102,7 @@ async function main() {
         await ensureGhPagesWorktree(worktreeDir);
         await clearWorktree(worktreeDir);
         await copyDistContents(distDir, worktreeDir);
+        await cp(dataDir, path.join(worktreeDir, 'data'), { recursive: true, force: true });
 
         await writeFile(path.join(worktreeDir, '.nojekyll'), '');
 
