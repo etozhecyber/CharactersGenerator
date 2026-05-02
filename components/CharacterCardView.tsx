@@ -7,7 +7,7 @@ import { useTokenCounter, countTokens } from '../hooks/useTokenCounter';
 import { EditableField } from './EditableField';
 import { EditableGreeting } from './EditableGreeting';
 import { RefineFieldModal } from './RefineFieldModal';
-import { refineField, generateImagePrompt, generateAvatar } from '../services/geminiService';
+import { refineField, generateImagePrompt, generateAvatar } from '../services/aiService';
 import { exportCharacterCard } from '../services/exportService';
 import { SparklesIcon } from './SparklesIcon';
 import { ImageIcon } from './ImageIcon';
@@ -48,9 +48,11 @@ interface CharacterCardViewProps {
     selectedTags: SelectedTag[];
     appVersion: string;
     generationLanguage: Language;
+    apiSettings: { apiKey: string; apiEndpoint: string; };
+    conceptGenerationModel: GenerationModel;
 }
 
-export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character, isLoading, error, onBack, onRegenerate, onShowPrompt, originalPrompt, generationModel, selectedTags, appVersion, generationLanguage }) => {
+export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character, isLoading, error, onBack, onRegenerate, onShowPrompt, originalPrompt, generationModel, selectedTags, appVersion, generationLanguage, apiSettings, conceptGenerationModel }) => {
     const { t } = useLocalization();
     const [characterData, setCharacterData] = useState<FullCharacter | null>(null);
 
@@ -122,6 +124,16 @@ export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character,
     const handleRefineSubmit = useCallback(async (instruction: string) => {
         if (!characterData || !fieldToRefine) return;
         
+        if (!apiSettings.apiKey) {
+            setRefineError(t('error_api_key_not_set'));
+            return;
+        }
+        
+        if (!generationModel) {
+            setRefineError(t('error_no_model_selected'));
+            return;
+        }
+        
         setIsRefining(true);
         setRefineError(null);
         try {
@@ -133,6 +145,7 @@ export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character,
                 model: generationModel,
                 fieldIndex: fieldToRefine.index,
                 language: generationLanguage,
+                apiSettings
             });
             
             if (fieldToRefine.field === 'alternate_greetings' && typeof fieldToRefine.index === 'number') {
@@ -149,25 +162,42 @@ export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character,
         } finally {
             setIsRefining(false);
         }
-    }, [characterData, fieldToRefine, originalPrompt, generationModel, generationLanguage, handleFieldChange, handleGreetingChange, handleCloseRefineModal]);
+    }, [characterData, fieldToRefine, originalPrompt, generationModel, generationLanguage, apiSettings, handleFieldChange, handleGreetingChange, handleCloseRefineModal]);
 
 
     const handleGenerateImagePrompt = useCallback(async () => {
         if (!characterData) return;
+        
+        if (!apiSettings.apiKey) {
+            setAvatarError(t('error_api_key_not_set'));
+            return;
+        }
+        
+        if (!conceptGenerationModel) {
+            setAvatarError(t('error_no_model_selected'));
+            return;
+        }
+        
         setIsGeneratingImagePrompt(true);
         setAvatarError(null);
         try {
-            const { imagePrompt } = await generateImagePrompt(characterData);
+            const { imagePrompt } = await generateImagePrompt(characterData, conceptGenerationModel, apiSettings);
             setImagePrompt(imagePrompt);
         } catch (err) {
             setAvatarError(err instanceof Error ? err.message : t('error_generating_image_prompt'));
         } finally {
             setIsGeneratingImagePrompt(false);
         }
-    }, [characterData, t]);
+    }, [characterData, conceptGenerationModel, apiSettings, t]);
 
     const handleGenerateAvatar = useCallback(async () => {
         if (!imagePrompt) return;
+        
+        if (!apiSettings.apiKey) {
+            setAvatarError(t('error_api_key_not_set'));
+            return;
+        }
+        
         setIsGeneratingAvatar(true);
         setAvatarError(null);
         try {
@@ -338,8 +368,9 @@ export const CharacterCardView: React.FC<CharacterCardViewProps> = ({ character,
                             </button>
                             <button
                                 onClick={handleGenerateAvatar}
-                                disabled={!imagePrompt || isGeneratingAvatar || isGeneratingImagePrompt}
-                                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-lg transition-colors text-sm"
+                                disabled={true}
+                                title={t('error_feature_disabled')}
+                                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-lg transition-colors text-sm opacity-50"
                             >
                                 {isGeneratingAvatar ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>}
                                 {t('generate_avatar_button_title')}

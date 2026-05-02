@@ -29,7 +29,12 @@ export type Language = 'en' | 'ru';
 
 export type GalleryViewMode = 'grid' | 'table';
 
-export type GenerationModel = 'gemini-flash-latest' | 'gemini-2.5-pro' | 'gemini-3.1-pro-preview' | 'gemini-3-flash-preview';
+export type GenerationModel = string;
+
+export type ApiSettings = {
+    apiKey: string;
+    apiEndpoint: string;
+};
 
 export type LocaleMessages = {
     [key: string]: string;

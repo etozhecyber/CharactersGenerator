@@ -1,8 +1,5 @@
-
-import { Type, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import { ai } from '../geminiClient';
-import type { FullCharacter } from '../../types';
-import { transformPromptToHistory } from '../PromptToHistoryTransformer';
+import { createOpenAIClient } from '../openaiClient';
+import type { FullCharacter, ApiSettings } from '../../types';
 
 const getPromptForImagePrompt = (character: FullCharacter): string => {
     const { name, description } = character;
@@ -37,59 +34,47 @@ Now, based on the provided character details, generate the SFW image prompt acco
 };
 
 
-export const generateImagePrompt = async (character: FullCharacter): Promise<{ imagePrompt: string, request: object }> => {
+export const generateImagePrompt = async (
+    character: FullCharacter,
+    model: string,
+    apiSettings: ApiSettings
+): Promise<{ imagePrompt: string, request: object }> => {
+    if (!model) {
+        throw new Error("Model for generation is not selected. Please specify it in the settings.");
+    }
+
     const promptText = getPromptForImagePrompt(character);
-    const historyContents = transformPromptToHistory(promptText);
+    const openai = createOpenAIClient(apiSettings);
 
     const request = {
-        model: 'gemini-flash-latest',
-        contents: historyContents,
-        config: {
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    imagePrompt: {
-                        type: Type.STRING,
-                        description: "A single, comma-separated string of keywords and short phrases that is strictly SFW, based on the character description. This prompt must not contain any labels or extra text. It must be in English."
+        model: model,
+        messages: [{ role: "user" as const, content: promptText }],
+        response_format: {
+            type: "json_schema" as const,
+            json_schema: {
+                name: "image_prompt",
+                strict: true,
+                schema: {
+                    type: "object",
+                    properties: {
+                        imagePrompt: {
+                            type: "string",
+                            description: "A single, comma-separated string of keywords and short phrases that is strictly SFW, based on the character description. This prompt must not contain any labels or extra text. It must be in English."
+                        },
                     },
-                },
-                required: ["imagePrompt"]
-            },
+                    required: ["imagePrompt"],
+                    additionalProperties: false
+                }
+            }
         }
     };
 
-    const response = await ai.models.generateContent(request);
+    const response = await openai.chat.completions.create(request);
 
-    if (response.promptFeedback?.blockReason) {
-        const reason = response.promptFeedback.blockReason;
-        const safetyRatings = response.promptFeedback.safetyRatings?.map(r => `${r.category.replace('HARM_CATEGORY_', '')}: ${r.probability}`).join(', ');
-        console.error("Image prompt generation blocked by safety filters.", response.promptFeedback);
-        throw new Error(`Prompt generation was blocked. Reason: ${reason}. Details: ${safetyRatings || 'N/A'}`);
-    }
-
-    const jsonText = (response.text ?? '').trim();
+    const jsonText = response.choices[0]?.message?.content?.trim() || '';
 
     if (!jsonText) {
-        const finishReason = response.candidates?.[0]?.finishReason;
-        const finishMessage = response.candidates?.[0]?.finishMessage;
-        console.error("Failed to generate image prompt: AI returned an empty response.", `Finish Reason: ${finishReason}`, `Message: ${finishMessage}`);
-
-        let errorMessage = "The AI returned an empty response for the image prompt.";
-        if (finishReason && finishReason !== 'STOP') {
-            errorMessage = `Generation failed unexpectedly. Reason: ${finishReason}.`;
-            if (finishMessage) {
-                errorMessage += ` Details: ${finishMessage}`;
-            }
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error("The AI returned an empty response for the image prompt.");
     }
     
     try {

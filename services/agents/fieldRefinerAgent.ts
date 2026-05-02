@@ -1,9 +1,6 @@
-
-import { Type, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import type { FullCharacter, GenerationModel, Language } from '../../types';
-import { ai, languageMap } from '../geminiClient';
+import type { FullCharacter, GenerationModel, Language, ApiSettings } from '../../types';
+import { createOpenAIClient, languageMap } from '../openaiClient';
 import { fieldSpecificInstructions } from '../promptFragments';
-import { transformPromptToHistory } from '../PromptToHistoryTransformer';
 
 interface RefineFieldOptions {
     fullCharacterData: FullCharacter;
@@ -13,6 +10,7 @@ interface RefineFieldOptions {
     model: GenerationModel;
     fieldIndex?: number | null;
     language: Language;
+    apiSettings: ApiSettings;
 }
 
 const getPromptForRefinement = (options: RefineFieldOptions): string => {
@@ -25,7 +23,7 @@ const getPromptForRefinement = (options: RefineFieldOptions): string => {
         ? fullCharacterData.alternate_greetings[fieldIndex]
         : fullCharacterData[fieldToRefine] as string;
 
-    const originalGenerationPrompt = originalPromptObject?.contents || "No original prompt provided.";
+    const originalGenerationPrompt = originalPromptObject?.messages?.[0]?.content || "No original prompt provided.";
     
     const dialogueFields: Array<keyof FullCharacter> = ['first_mes', 'alternate_greetings', 'mes_example'];
     const requiresSpecificLanguage = dialogueFields.includes(fieldToRefine);
@@ -62,54 +60,44 @@ Your response must be a JSON object that adheres to the provided schema. Rewrite
 `;
 };
 
-
 export const refineField = async (options: RefineFieldOptions): Promise<{ refinedContent: string, request: object }> => {
+    if (!options.model) {
+        throw new Error("Model for generation is not selected. Please specify it in the settings.");
+    }
+    
     const prompt = getPromptForRefinement(options);
-    const historyContents = transformPromptToHistory(prompt);
+    const openai = createOpenAIClient(options.apiSettings);
 
     const request = {
         model: options.model,
-        contents: historyContents,
-        config: {
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    refinedContent: {
-                        type: Type.STRING,
-                        description: "The rewritten, refined text for the specified field. This output MUST ONLY be the new content, adhering to the original rules for the field. Do not include any other explanations, labels, or markdown formatting (unless it is part of the content itself like in 'mes_example')."
+        messages: [{ role: "user" as const, content: prompt }],
+        response_format: {
+            type: "json_schema" as const,
+            json_schema: {
+                name: "field_refinement",
+                strict: true,
+                schema: {
+                    type: "object",
+                    properties: {
+                        refinedContent: {
+                            type: "string",
+                            description: "The rewritten, refined text for the specified field. This output MUST ONLY be the new content, adhering to the original rules for the field. Do not include any other explanations, labels, or markdown formatting (unless it is part of the content itself like in 'mes_example')."
+                        },
                     },
-                },
-                required: ["refinedContent"]
-            },
+                    required: ["refinedContent"],
+                    additionalProperties: false
+                }
+            }
         }
     };
 
     try {
-        const response = await ai.models.generateContent(request);
-
-        if (response.promptFeedback?.blockReason) {
-             console.error("Field refinement blocked by safety filters.", response.promptFeedback);
-            throw new Error(`The AI refused to refine the content due to safety policies (Reason: ${response.promptFeedback.blockReason}).`);
-        }
+        const response = await openai.chat.completions.create(request);
         
-        const jsonText = (response.text ?? '').trim();
+        const jsonText = response.choices[0]?.message?.content?.trim() || '';
 
         if (!jsonText) {
-            const finishReason = response.candidates?.[0]?.finishReason;
-            let errorMessage = "The AI returned an empty response for refinement.";
-             if (finishReason === 'SAFETY') {
-                errorMessage = "The refined content was blocked by safety filters.";
-            } else if (finishReason) {
-                errorMessage += ` Finish reason: ${finishReason}.`;
-            }
-            throw new Error(errorMessage);
+            throw new Error("The AI returned an empty response for refinement.");
         }
 
         try {

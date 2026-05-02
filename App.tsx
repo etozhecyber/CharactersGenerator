@@ -8,7 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { PromptDebugModal } from './components/PromptDebugModal';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { LocalizationProvider, useLocalization } from './hooks/useLocalization';
-import { generateConcepts, generateFullCard } from './services/geminiService';
+import { generateConcepts, generateFullCard } from './services/aiService';
 import type { CharacterConcept, FullCharacter, Language, GalleryViewMode, GenerationModel, SelectedTag } from './types';
 import { SelectedTagsBar } from './components/SelectedTagsBar';
 import { APP_VERSION } from './version';
@@ -28,9 +28,11 @@ const AppContent: React.FC = () => {
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [galleryViewMode, setGalleryViewMode] = useLocalStorage<GalleryViewMode>('galleryViewMode', 'grid');
-    const [generationModel, setGenerationModel] = useLocalStorage<GenerationModel>('generationModel', 'gemini-3.1-pro-preview');
-    const [conceptGenerationModel, setConceptGenerationModel] = useLocalStorage<GenerationModel>('conceptGenerationModel', 'gemini-3-flash-preview');
+    const [generationModel, setGenerationModel] = useLocalStorage<GenerationModel>('generationModel', '');
+    const [conceptGenerationModel, setConceptGenerationModel] = useLocalStorage<GenerationModel>('conceptGenerationModel', '');
     const [cardGenerationLanguage, setCardGenerationLanguage] = useLocalStorage<Language>('cardGenerationLanguage', 'en');
+    const [apiKey, setApiKey] = useLocalStorage<string>('apiKey', '');
+    const [apiEndpoint, setApiEndpoint] = useLocalStorage<string>('apiEndpoint', 'https://api.openai.com/v1');
 
     // State for prompt debugging
     const [lastConceptPrompt, setLastConceptPrompt] = useState<object | null>(null);
@@ -41,10 +43,27 @@ const AppContent: React.FC = () => {
     const fetchConcepts = useCallback(async (tags: SelectedTag[], append: boolean = false) => {
         setIsLoading(true);
         setConceptError(null); // Use concept-specific error state
+        
+        if (!apiKey) {
+            setConceptError(t('error_api_key_not_set'));
+            setIsSettingsOpen(true);
+            setIsLoading(false);
+            return;
+        }
+        
+        if (!conceptGenerationModel) {
+            setConceptError(t('error_no_model_selected'));
+            setIsSettingsOpen(true);
+            setIsLoading(false);
+            return;
+        }
+        
         try {
             // Concepts are always generated with the user-selected concept model.
             // Concept descriptions use the UI language.
-            const { concepts: newConcepts, prompt } = await generateConcepts(tags, language, conceptGenerationModel);
+            const { concepts: newConcepts, prompt } = await generateConcepts(
+                tags, language, conceptGenerationModel, { apiKey, apiEndpoint }
+            );
             setLastConceptPrompt(prompt); // Store the prompt for debugging
             
             // Deduplicate new concepts against existing ones
@@ -65,8 +84,12 @@ const AppContent: React.FC = () => {
     }, [t, characterConcepts, language, conceptGenerationModel]);
 
     useEffect(() => {
-        // Initial load with no tags
-        fetchConcepts([], false);
+        if (!apiKey) {
+            setIsSettingsOpen(true);
+        } else {
+            // Initial load with no tags
+            fetchConcepts([], false);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -84,9 +107,26 @@ const AppContent: React.FC = () => {
         setIsLoading(true);
         setCardError(null); // Use card-specific error state
         setFullCharacter(null);
+        
+        if (!apiKey) {
+            setCardError(t('error_api_key_not_set'));
+            setIsSettingsOpen(true);
+            setIsLoading(false);
+            return;
+        }
+        
+        if (!generationModel) {
+            setCardError(t('error_no_model_selected'));
+            setIsSettingsOpen(true);
+            setIsLoading(false);
+            return;
+        }
+        
         try {
             // Full card generation uses the user-selected model and card language.
-            const { character, prompt } = await generateFullCard(concept, selectedTags, generationModel, cardGenerationLanguage);
+            const { character, prompt } = await generateFullCard(
+                concept, selectedTags, generationModel, cardGenerationLanguage, { apiKey, apiEndpoint }
+            );
             setFullCharacter(character);
             setLastFullCardPrompt(prompt); // Store the prompt for debugging
         } catch (err) {
@@ -174,6 +214,8 @@ const AppContent: React.FC = () => {
                         selectedTags={selectedTags}
                         appVersion={APP_VERSION}
                         generationLanguage={cardGenerationLanguage}
+                        apiSettings={{ apiKey, apiEndpoint }}
+                        conceptGenerationModel={conceptGenerationModel}
                     />
                 )}
             </main>
@@ -181,6 +223,10 @@ const AppContent: React.FC = () => {
             <SettingsModal 
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                apiEndpoint={apiEndpoint}
+                onApiEndpointChange={setApiEndpoint}
                 generationModel={generationModel}
                 onGenerationModelChange={setGenerationModel}
                 conceptGenerationModel={conceptGenerationModel}

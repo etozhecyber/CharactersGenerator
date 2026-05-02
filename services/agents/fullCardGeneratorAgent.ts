@@ -1,13 +1,10 @@
-import { Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import type { CharacterConcept, FullCharacter, GenerationModel, SelectedTag, Language } from '../../types';
-import { ai, formatTagsForPrompt, languageMap } from '../geminiClient';
+import type { CharacterConcept, FullCharacter, GenerationModel, SelectedTag, Language, ApiSettings } from '../../types';
+import { createOpenAIClient, formatTagsForPrompt, languageMap } from '../openaiClient';
 import { fieldSpecificInstructions } from '../promptFragments';
-import { transformPromptToHistory } from '../PromptToHistoryTransformer';
 
 const getPromptForFullCard = (concept: CharacterConcept, tags: SelectedTag[]): string => {
     const tagsSection = formatTagsForPrompt(tags);
 
-    // This prompt is structured to heavily emphasize the user's tags as the primary driver of the output.
     return `You are a world-class character writer for interactive fiction and role-playing scenarios, with a talent for creating vivid, deep, and engaging characters that feel alive.
 
 **CRITICAL INSTRUCTIONS - READ CAREFULLY:**
@@ -35,22 +32,30 @@ ${tagsSection}
 The final character must strictly adhere to ALL of the user-provided requirements, especially the tags. Your response must be a single, valid JSON object that conforms to the provided schema. Now, generate the complete character card.`;
 };
 
-export const generateFullCard = async (concept: CharacterConcept, tags: SelectedTag[], model: GenerationModel, language: Language): Promise<{character: FullCharacter, prompt: object}> => {
+export const generateFullCard = async (
+    concept: CharacterConcept, 
+    tags: SelectedTag[], 
+    model: GenerationModel, 
+    language: Language,
+    apiSettings: ApiSettings
+): Promise<{character: FullCharacter, prompt: object}> => {
+    if (!model) {
+        throw new Error("Model for card generation is not selected. Please specify it in the settings.");
+    }
+    
     const prompt = getPromptForFullCard(concept, tags);
-    const historyContents = transformPromptToHistory(prompt);
+    const openai = createOpenAIClient(apiSettings);
+    
     const outputLanguage = languageMap[language] || 'English';
     const englishInstruction = "**Language Rule**: This field MUST be written in **English**.";
     
     // Dynamically add language instruction to relevant field descriptions
     const dynamicFieldInstructions = {
         ...fieldSpecificInstructions,
-        // These fields are ALWAYS in English
         name: `${fieldSpecificInstructions.name}\n${englishInstruction}`,
         description: `${fieldSpecificInstructions.description}\n${englishInstruction}`,
         personality: `${fieldSpecificInstructions.personality}\n${englishInstruction}`,
         scenario: `${fieldSpecificInstructions.scenario}\n${englishInstruction}`,
-
-        // These fields follow the selected card generation language
         first_mes: `${fieldSpecificInstructions.first_mes}\n**Language Rule**: This field MUST be written in **${outputLanguage}**.`,
         alternate_greetings: `${fieldSpecificInstructions.alternate_greetings}\n**Language Rule**: Each greeting in this array MUST be written in **${outputLanguage}**.`,
         mes_example: `${fieldSpecificInstructions.mes_example}\n**Language Rule**: The entire dialogue example, including BOTH the '{{user}}' and '{{char}}' parts, MUST be written in **${outputLanguage}**.`,
@@ -58,78 +63,40 @@ export const generateFullCard = async (concept: CharacterConcept, tags: Selected
 
     const request = {
         model: model,
-        contents: historyContents,
-        config: {
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-            responseMimeType: "application/json",
-            // The JSON schema now contains the detailed instructions for each field,
-            // making it the single source of truth for generation rules.
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.name
+        messages: [{ role: "user" as const, content: prompt }],
+        response_format: {
+            type: "json_schema" as const,
+            json_schema: {
+                name: "full_character_card",
+                strict: true,
+                schema: {
+                    type: "object",
+                    properties: {
+                        name: { type: "string", description: dynamicFieldInstructions.name },
+                        description: { type: "string", description: dynamicFieldInstructions.description },
+                        personality: { type: "string", description: dynamicFieldInstructions.personality },
+                        first_mes: { type: "string", description: dynamicFieldInstructions.first_mes },
+                        alternate_greetings: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: dynamicFieldInstructions.alternate_greetings
+                        },
+                        mes_example: { type: "string", description: dynamicFieldInstructions.mes_example },
+                        scenario: { type: "string", description: dynamicFieldInstructions.scenario },
                     },
-                    description: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.description
-                    },
-                    personality: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.personality
-                    },
-                    first_mes: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.first_mes
-                    },
-                    alternate_greetings: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: dynamicFieldInstructions.alternate_greetings
-                    },
-                    mes_example: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.mes_example
-                    },
-                    scenario: { 
-                        type: Type.STRING,
-                        description: dynamicFieldInstructions.scenario
-                    },
-                },
-                required: ["name", "description", "personality", "first_mes", "alternate_greetings", "mes_example", "scenario"]
-            },
+                    required: ["name", "description", "personality", "first_mes", "alternate_greetings", "mes_example", "scenario"],
+                    additionalProperties: false
+                }
+            }
         }
     };
 
-    const response = await ai.models.generateContent(request);
-
-    // More robust error handling
-    if (response.promptFeedback?.blockReason) {
-        console.error("Full card generation blocked by safety filters.", response.promptFeedback);
-        throw new Error(`The AI refused to generate the character due to safety policies (Reason: ${response.promptFeedback.blockReason}). Please try modifying your tags or concept.`);
-    }
+    const response = await openai.chat.completions.create(request);
     
-    const jsonText = (response.text ?? '').trim();
+    const jsonText = response.choices[0]?.message?.content?.trim() || '';
     if (!jsonText) {
-        const finishReason = response.candidates?.[0]?.finishReason;
-        console.error("Failed to parse full card JSON: AI returned an empty response.", `Finish Reason: ${finishReason}`);
-
-        let errorMessage = "Received an invalid format from the AI for the character card.";
-        if (finishReason === 'SAFETY') {
-             errorMessage = "The response was blocked by safety filters. Please try modifying your tags or concept.";
-        } else if (finishReason === 'MAX_TOKENS') {
-            errorMessage = "The generation stopped because it reached the maximum token limit. The prompt might be too long or the requested response too large.";
-        } else if (finishReason) {
-            errorMessage += ` The generation finished unexpectedly with reason: ${finishReason}.`;
-        }
-        
-        throw new Error(errorMessage);
+        console.error("Failed to parse full card JSON: AI returned an empty response.");
+        throw new Error("Received an invalid format from the AI for the character card.");
     }
     
     try {

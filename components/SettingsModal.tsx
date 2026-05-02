@@ -6,6 +6,10 @@ import { useLocalization } from '../hooks/useLocalization';
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
+    apiKey: string;
+    onApiKeyChange: (key: string) => void;
+    apiEndpoint: string;
+    onApiEndpointChange: (endpoint: string) => void;
     generationModel: GenerationModel;
     onGenerationModelChange: (model: GenerationModel) => void;
     conceptGenerationModel: GenerationModel;
@@ -23,7 +27,10 @@ const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
-    isOpen, onClose, generationModel, onGenerationModelChange, 
+    isOpen, onClose, 
+    apiKey, onApiKeyChange,
+    apiEndpoint, onApiEndpointChange,
+    generationModel, onGenerationModelChange, 
     conceptGenerationModel, onConceptGenerationModelChange,
     cardGenerationLanguage, onCardGenerationLanguageChange, appVersion 
 }) => {
@@ -40,11 +47,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onCardGenerationLanguageChange(e.target.value as Language);
     };
 
-    const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onGenerationModelChange(e.target.value as GenerationModel);
     };
 
-    const handleConceptModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleConceptModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onConceptGenerationModelChange(e.target.value as GenerationModel);
     };
 
@@ -95,33 +102,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div>
-                        <label htmlFor="model-select" className="block text-sm font-medium text-gray-300 mb-1">{t('generation_model_label')}</label>
-                        <select
-                            id="model-select"
-                            value={generationModel}
-                            onChange={handleModelChange}
+                        <label htmlFor="api-key-input" className="block text-sm font-medium text-gray-300 mb-1">{t('api_key_label')}</label>
+                        <input
+                            id="api-key-input"
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => onApiKeyChange(e.target.value)}
                             className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
-                        >
-                            <option value="gemini-flash-latest">{t('model_flash')}</option>
-                            <option value="gemini-2.5-pro">{t('model_pro')}</option>
-                            <option value="gemini-3.1-pro-preview">{t('model_3_1_pro')}</option>
-                            <option value="gemini-3-flash-preview">{t('model_3_0_flash')}</option>
-                        </select>
+                        />
                     </div>
 
                     <div>
-                        <label htmlFor="concept-model-select" className="block text-sm font-medium text-gray-300 mb-1">{t('concept_generation_model_label')}</label>
-                        <select
-                            id="concept-model-select"
+                        <label htmlFor="api-endpoint-input" className="block text-sm font-medium text-gray-300 mb-1">{t('api_endpoint_label')}</label>
+                        <input
+                            id="api-endpoint-input"
+                            type="text"
+                            value={apiEndpoint}
+                            onChange={(e) => onApiEndpointChange(e.target.value)}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="model-input" className="block text-sm font-medium text-gray-300 mb-1">{t('generation_model_label')}</label>
+                        <input
+                            id="model-input"
+                            type="text"
+                            value={generationModel}
+                            onChange={handleModelChange}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="concept-model-input" className="block text-sm font-medium text-gray-300 mb-1">{t('concept_generation_model_label')}</label>
+                        <input
+                            id="concept-model-input"
+                            type="text"
                             value={conceptGenerationModel}
                             onChange={handleConceptModelChange}
                             className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
-                        >
-                            <option value="gemini-flash-latest">{t('model_flash')}</option>
-                            <option value="gemini-2.5-pro">{t('model_pro')}</option>
-                            <option value="gemini-3.1-pro-preview">{t('model_3_1_pro')}</option>
-                            <option value="gemini-3-flash-preview">{t('model_3_0_flash')}</option>
-                        </select>
+                        />
                     </div>
                 </div>
 

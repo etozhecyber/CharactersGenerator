@@ -1,14 +1,17 @@
-
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from 'openai';
 import { ALL_CATEGORIES, CATEGORY_DESCRIPTIONS } from '../constants';
-import type { Language, SelectedTag } from '../types';
+import type { Language, SelectedTag, ApiSettings } from '../types';
 
-// API Key setup
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-    throw new Error("API_KEY environment variable not set.");
-}
-export const ai = new GoogleGenAI({ apiKey: API_KEY });
+export const createOpenAIClient = (settings: ApiSettings) => {
+    if (!settings.apiKey) {
+        throw new Error("API Key is not set.");
+    }
+    return new OpenAI({
+        apiKey: settings.apiKey,
+        baseURL: settings.apiEndpoint || 'https://api.openai.com/v1',
+        dangerouslyAllowBrowser: true, // Necessary because we run it in browser
+    });
+};
 
 // Custom error for easy identification of quota issues.
 export class QuotaExceededError extends Error {

@@ -1,8 +1,5 @@
-
-import { Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import type { CharacterConcept, Language, SelectedTag } from '../../types';
-import { ai, languageMap, formatTagsForPrompt } from '../geminiClient';
-import { transformPromptToHistory } from "../PromptToHistoryTransformer";
+import type { CharacterConcept, Language, SelectedTag, ApiSettings } from '../../types';
+import { createOpenAIClient, languageMap, formatTagsForPrompt } from '../openaiClient';
 
 const getPromptForConcepts = (tags: SelectedTag[], language: Language): string => {
     const outputLanguage = languageMap[language] || 'English';
@@ -25,46 +22,59 @@ const getPromptForConcepts = (tags: SelectedTag[], language: Language): string =
     return `${baseInstruction}\n\n**User Requirements:**\nThe concepts must adhere to the following user requirements:\n${tagsSection}`;
 };
 
-
-export const generateConcepts = async (tags: SelectedTag[], language: Language, model: string = 'gemini-3-flash-preview'): Promise<{ concepts: CharacterConcept[], prompt: object }> => {
+export const generateConcepts = async (
+    tags: SelectedTag[],
+    language: Language,
+    model: string,
+    apiSettings: ApiSettings
+): Promise<{ concepts: CharacterConcept[], prompt: object }> => {
+    if (!model) {
+        throw new Error("Model for concept generation is not selected. Please specify it in the settings.");
+    }
     const prompt = getPromptForConcepts(tags, language);
-    const historyContents = transformPromptToHistory(prompt);
-    
+    const openai = createOpenAIClient(apiSettings);
+
     const request = {
         model: model,
-        contents: historyContents,
-        config: {
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
+        messages: [{ role: "user" as const, content: prompt }],
+        response_format: {
+            type: "json_schema" as const,
+            json_schema: {
+                name: "character_concepts",
+                strict: true,
+                schema: {
+                    type: "object",
                     properties: {
-                        name: { type: Type.STRING },
-                        description: { type: Type.STRING },
+                        concepts: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    name: { type: "string" },
+                                    description: { type: "string" },
+                                },
+                                required: ["name", "description"],
+                                additionalProperties: false
+                            }
+                        }
                     },
-                    required: ["name", "description"]
+                    required: ["concepts"],
+                    additionalProperties: false
                 }
-            },
+            }
         }
     };
 
-    const response = await ai.models.generateContent(request);
+    const response = await openai.chat.completions.create(request);
 
-    const jsonText = (response.text ?? '').trim();
+    const jsonText = response.choices[0]?.message?.content?.trim() || '';
     if (!jsonText) {
         console.error("Failed to parse concept JSON: AI returned an empty response.");
         throw new Error("Received an invalid format from the AI for concepts.");
     }
     try {
-        const concepts = JSON.parse(jsonText);
-        return { concepts, prompt: request };
+        const parsed = JSON.parse(jsonText);
+        return { concepts: parsed.concepts, prompt: request };
     } catch (e) {
         console.error("Failed to parse concept JSON:", jsonText);
         throw new Error("Received an invalid format from the AI for concepts.");
