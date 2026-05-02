@@ -2,13 +2,17 @@ import type { CharacterConcept, FullCharacter, GenerationModel, SelectedTag, Lan
 import { createOpenAIClient, formatTagsForPrompt, languageMap } from '../openaiClient';
 import { fieldSpecificInstructions } from '../promptFragments';
 
-const getPromptForFullCard = (concept: CharacterConcept, tags: SelectedTag[]): string => {
+const getPromptForFullCard = (concept: CharacterConcept, tags: SelectedTag[], outputLanguage: string): string => {
     const tagsSection = formatTagsForPrompt(tags);
 
     return `You are a world-class character writer for interactive fiction and role-playing scenarios, with a talent for creating vivid, deep, and engaging characters that feel alive.
 
 **CRITICAL INSTRUCTIONS - READ CAREFULLY:**
 Your primary goal is to generate a character card that is **fundamentally shaped** by the user-provided tags. These tags are not mere suggestions; they are the core rules for the character's identity, the world they inhabit, and the style of your writing.
+
+**LANGUAGE REQUIREMENTS - ABSOLUTE PRIORITY:**
+- The fields \`name\`, \`description\`, \`personality\`, and \`scenario\` MUST be written in **English**.
+- The fields \`first_mes\`, \`alternate_greetings\`, and \`mes_example\` MUST be written in **${outputLanguage}**. This is an absolute requirement, even if the tags or concepts are in English.
 
 - **Meta & Tone Tags are KING:** Tags from the 'Meta' and 'Tone' categories (e.g., 'NSFW', 'Horror', 'Wholesome', 'Slice of Life') are the most important. They dictate the entire mood, writing style, and appropriate content level. A 'Horror' tag MUST result in a genuinely unsettling card, while a 'Wholesome' tag MUST produce something heartwarming and safe. The entire output should reflect this.
 - **Blend and Balance Tags:** Do not let one single tag dominate the entire character, especially if it's a strong theme. Instead, creatively blend the influences of all selected tags. For example, if 'Romance' and 'Horror' are both selected, the result should not just be a horror story; it should be a romantic horror story, finding ways to merge both themes. A 'Shy' but 'Sadistic' character might show their sadistic side only in private moments. Find the interesting intersections and nuanced expressions that arise from the combination of tags.
@@ -43,10 +47,10 @@ export const generateFullCard = async (
         throw new Error("Model for card generation is not selected. Please specify it in the settings.");
     }
     
-    const prompt = getPromptForFullCard(concept, tags);
+    const outputLanguage = languageMap[language] || 'English';
+    const prompt = getPromptForFullCard(concept, tags, outputLanguage);
     const openai = createOpenAIClient(apiSettings);
     
-    const outputLanguage = languageMap[language] || 'English';
     const englishInstruction = "**Language Rule**: This field MUST be written in **English**.";
     
     // Dynamically add language instruction to relevant field descriptions
@@ -100,7 +104,25 @@ export const generateFullCard = async (
     }
     
     try {
-        const character = JSON.parse(jsonText);
+        const raw = JSON.parse(jsonText);
+        // Normalize all string fields — some models may return an object instead of a string
+        const stringFields: Array<keyof FullCharacter> = ['name', 'description', 'personality', 'first_mes', 'mes_example', 'scenario'];
+        const character: FullCharacter = { ...raw };
+        for (const field of stringFields) {
+            const val = raw[field];
+            if (typeof val !== 'string') {
+                console.warn(`Field "${field}" was not a string (got ${typeof val}), converting...`, val);
+                character[field] = typeof val === 'object' && val !== null ? JSON.stringify(val, null, 2) : String(val ?? '');
+            }
+        }
+        // Ensure alternate_greetings is an array of strings
+        if (!Array.isArray(character.alternate_greetings)) {
+            character.alternate_greetings = [];
+        } else {
+            character.alternate_greetings = character.alternate_greetings.map((g: unknown) =>
+                typeof g === 'string' ? g : (typeof g === 'object' && g !== null ? JSON.stringify(g, null, 2) : String(g ?? ''))
+            );
+        }
         return { character, prompt: request };
     } catch (e) {
         console.error("Failed to parse full card JSON:", jsonText);
